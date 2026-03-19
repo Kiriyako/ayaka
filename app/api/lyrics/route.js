@@ -15,7 +15,9 @@ function decodeHtmlEntities(str) {
 
 function cleanLyrics(raw) {
   let lyrics = decodeHtmlEntities(raw);
+  // Remove Genius junk header: "11 ContributorsDaisy Lyrics" or "3 ContributorsSong Name Lyrics"
   lyrics = lyrics.replace(/^\d+\s+Contributor[s]?[\s\S]*?Lyrics\n*/i, "");
+  // Remove "Embed" at the very end
   lyrics = lyrics.replace(/\d*Embed\s*$/i, "");
   return lyrics.trim();
 }
@@ -28,6 +30,7 @@ async function scrapeLyrics(url) {
     },
   });
   const html = await res.text();
+
   const marker = 'data-lyrics-container="true"';
   const chunks = [];
   let pos = 0;
@@ -35,47 +38,52 @@ async function scrapeLyrics(url) {
   while (true) {
     const start = html.indexOf(marker, pos);
     if (start === -1) break;
+
     const tagEnd = html.indexOf(">", start);
     if (tagEnd === -1) break;
+
     let depth = 1;
     let i = tagEnd + 1;
     while (i < html.length && depth > 0) {
       const nextOpen = html.indexOf("<div", i);
       const nextClose = html.indexOf("</div>", i);
+
       if (nextClose === -1) break;
+
       if (nextOpen !== -1 && nextOpen < nextClose) {
         depth++;
         i = nextOpen + 4;
       } else {
         depth--;
-        if (depth === 0) chunks.push(html.slice(tagEnd + 1, nextClose));
+        if (depth === 0) {
+          const inner = html.slice(tagEnd + 1, nextClose);
+          chunks.push(inner);
+        }
         i = nextClose + 6;
       }
     }
+
     pos = tagEnd + 1;
   }
 
   if (!chunks.length) return null;
+
   const raw = chunks
-    .map(c => c.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, ""))
+    .map((chunk) =>
+      chunk
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+    )
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
   return cleanLyrics(raw) || null;
 }
 
-export default async (req, context) => {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
-  }
-
+export async function POST(req) {
   const body = await req.json();
-  const { action, title, artist, query } = body;
-
-  const headers = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-  };
+  const { action, title, artist, url, query } = body;
 
   try {
     if (action === "search") {
@@ -92,7 +100,7 @@ export default async (req, context) => {
         albumArt: h.result.song_art_image_thumbnail_url,
         url: h.result.url,
       }));
-      return new Response(JSON.stringify({ success: true, results }), { status: 200, headers });
+      return Response.json({ success: true, results });
     }
 
     if (action === "getSong") {
@@ -103,21 +111,35 @@ export default async (req, context) => {
       );
       const data = await res.json();
       const hit = data.response?.hits?.[0]?.result;
-      if (!hit) return new Response(JSON.stringify({ success: false, error: "Song not found" }), { status: 404, headers });
+      if (!hit) return Response.json({ success: false, error: "Song not found" }, { status: 404 });
 
       const lyrics = await scrapeLyrics(hit.url);
-      if (!lyrics) return new Response(JSON.stringify({ success: false, error: "Could not fetch lyrics" }), { status: 404, headers });
+      if (!lyrics) return Response.json({ success: false, error: "Could not fetch lyrics" }, { status: 404 });
 
-      return new Response(JSON.stringify({
+      return Response.json({
         success: true,
-        song: { id: hit.id, title: hit.full_title, url: hit.url, albumArt: hit.song_art_image_url, lyrics },
-      }), { status: 200, headers });
+        song: {
+          id: hit.id,
+          title: hit.full_title,
+          url: hit.url,
+          albumArt: hit.song_art_image_url,
+          lyrics,
+        },
+      });
     }
 
-    return new Response(JSON.stringify({ success: false, error: "Unknown action" }), { status: 400, headers });
-  } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500, headers });
-  }
-};
+    if (action === "getByUrl") {
+      if (!url.includes("genius.com")) {
+        return Response.json({ success: false, error: "Only Genius URLs are supported" }, { status: 400 });
+      }
+      const lyrics = await scrapeLyrics(url);
+      if (!lyrics) return Response.json({ success: false, error: "Could not fetch lyrics" }, { status: 404 });
+      return Response.json({ success: true, lyrics });
+    }
 
-export const config = { path: "/api/lyrics" };
+    return Response.json({ success: false, error: "Unknown action" }, { status: 400 });
+  } catch (err) {
+    console.error(err);
+    return Response.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
