@@ -8,3 +8,9 @@
 [functions]
   node_bundler = "nft"
   directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/lyrics"
+  to = "/.netlify/functions/lyrics"
+  status = 200
+  force = true
