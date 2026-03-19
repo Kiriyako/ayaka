@@ -7,3 +7,4 @@
 
 [functions]
   node_bundler = "nft"
+  directory = "netlify/functions"
