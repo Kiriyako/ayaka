@@ -1,4 +1,4 @@
-const API_KEY = process.env.GENIUS_API_KEY || "C9JMlW3JOiknbkmq_AggdFNUvb0mFAkoVViTAQuN5mxT0wnzKydl8qdJNqNVfDeg";
+const API_KEY = process.env.GENIUS_API_KEY;
 const GENIUS_BASE = "https://api.genius.com";
 
 function decodeHtmlEntities(str) {
