@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@netlify/plugin-nextjs": "^5.15.9",
     "genius-lyrics-api": "^3.2.1",
     "next": "16.1.6",
     "react": "19.2.3",
